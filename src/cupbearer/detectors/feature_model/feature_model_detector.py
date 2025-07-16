@@ -46,11 +46,13 @@ class FeatureModelModule(L.LightningModule):
         self,
         feature_model: FeatureModel,
         lr: float,
+        weight_decay: float = 0.0,
     ):
         super().__init__()
 
         self.feature_model = feature_model
         self.lr = lr
+        self.weight_decay = weight_decay
 
     def _shared_step(self, batch):
         samples, features = batch
@@ -72,7 +74,7 @@ class FeatureModelModule(L.LightningModule):
 
     def configure_optimizers(self):
         # Note we only optimize over the abstraction parameters, the model is frozen
-        return torch.optim.Adam(self.feature_model.parameters(), lr=self.lr)
+        return torch.optim.Adam(self.feature_model.parameters(), lr=self.lr, weight_decay=self.weight_decay)
 
 
 class FeatureModelDetector(ActivationBasedDetector):
@@ -97,10 +99,11 @@ class FeatureModelDetector(ActivationBasedDetector):
             cache=cache,
         )
 
-    def _setup_training(self, lr: float):
+    def _setup_training(self, lr: float, weight_decay: float = 0.0):
         self.module = FeatureModelModule(
             self.feature_model,
             lr=lr,
+            weight_decay=weight_decay,
         )
 
         # Model is not always neccessary, but its abscence should raise a warning
@@ -127,11 +130,12 @@ class FeatureModelDetector(ActivationBasedDetector):
         *,
         lr: float = 1e-3,
         max_epochs: int = 1,
+        weight_decay: float = 0.0,
         **trainer_kwargs,
     ):
         if trusted_dataloader is None:
             raise ValueError("Abstraction detector requires trusted training data.")
-        self._setup_training(lr)
+        self._setup_training(lr, weight_decay)
 
         if save_path is not None:
             trainer_kwargs["default_root_dir"] = save_path
