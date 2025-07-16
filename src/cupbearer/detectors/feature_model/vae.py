@@ -2,8 +2,7 @@ import torch
 from torch import nn
 
 from cupbearer import utils
-
-from .feature_model_detector import FeatureModel, FeatureModelDetector
+from cupbearer.detectors.feature_model.feature_model_detector import FeatureModel, FeatureModelDetector
 
 
 class VAE(nn.Module):
@@ -20,21 +19,28 @@ class VAE(nn.Module):
                                anandkrish894@gmail.com
     """
 
-    def __init__(self, input_dim: int, latent_dim: int):
+    def __init__(
+        self,
+        input_dim: int,
+        latent_dim: int,
+        intermediate_dim_factor: float = 0.5,
+        dtype: torch.dtype = torch.bfloat16,
+    ):
         super().__init__()
         self.input_dim = input_dim
         self.latent_dim = latent_dim
 
+        self.intermediate_dim = int(input_dim * intermediate_dim_factor)
         self.encoder = nn.Sequential(
-            nn.Linear(input_dim, 2 * input_dim),
+            nn.Linear(input_dim, self.intermediate_dim, dtype=dtype),
             nn.ReLU(),
-            nn.Linear(2 * input_dim, 2 * self.latent_dim),
+            nn.Linear(self.intermediate_dim, 2 * self.latent_dim, dtype=dtype),
         )
 
         self.decoder = nn.Sequential(
-            nn.Linear(self.latent_dim, 2 * input_dim),
+            nn.Linear(self.latent_dim, self.intermediate_dim, dtype=dtype),
             nn.ReLU(),
-            nn.Linear(2 * input_dim, input_dim),
+            nn.Linear(self.intermediate_dim, input_dim, dtype=dtype),
         )
 
     def encode(self, input: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
@@ -47,7 +53,7 @@ class VAE(nn.Module):
         :return: (Tensor) Tuple of latent codes (mu, log_var), shaped as input but with C = latent_dim
         """
         original_shape = input.shape
-        
+
         if input.ndim == 2:
             # Input is already 2D, use as is
             reshaped_input = input
@@ -60,13 +66,15 @@ class VAE(nn.Module):
 
         # Pass through encoder
         result = self.encoder(reshaped_input)
-        
+
         assert result.ndim == 2, "Encoder output must be 2-dimensional"
-        assert result.shape[1] == 2 * self.latent_dim, f"Encoder output shape mismatch. Expected {2 * self.latent_dim} features, got {result.shape[1]}"
+        assert result.shape[1] == 2 * self.latent_dim, (
+            f"Encoder output shape mismatch. Expected {2 * self.latent_dim} features, got {result.shape[1]}"
+        )
 
         # Split the result into mu and log_var components
-        mu = result[:, :self.latent_dim]
-        log_var = result[:, self.latent_dim:]
+        mu = result[:, : self.latent_dim]
+        log_var = result[:, self.latent_dim :]
 
         # Reshape mu and log_var to match input shape
         if input.ndim == 3:
@@ -151,13 +159,9 @@ class VAEFeatureModel(FeatureModel):
     def forward(
         self, inputs, features: dict[str, torch.Tensor], return_outputs: bool = False
     ) -> dict[str, torch.Tensor]:
-        vae_outputs = {
-            name: vae(features[name], noise=self.add_noise) for name, vae in self.vaes.items()
-        }
+        vae_outputs = {name: vae(features[name], noise=self.add_noise) for name, vae in self.vaes.items()}
         # VAE outputs are (reconstruction, mu, log_var)
-        reconstructions = {
-            name: vae_output[0] for name, vae_output in vae_outputs.items()
-        }
+        reconstructions = {name: vae_output[0] for name, vae_output in vae_outputs.items()}
         mus = {name: vae_output[1] for name, vae_output in vae_outputs.items()}
         log_vars = {name: vae_output[2] for name, vae_output in vae_outputs.items()}
 

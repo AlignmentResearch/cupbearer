@@ -1,11 +1,14 @@
 # ruff: noqa: F401
 from .activation_based import ActivationBasedDetector
-from .anomaly_detector import AnomalyDetector
+from .anomaly_detector import AnomalyDetector, aggregate_scores
 from .extractors import ActivationExtractor, FeatureCache, FeatureExtractor
 from .feature_model import (
     VAE,
     FeatureModelDetector,
     LocallyConsistentAbstraction,
+    NormalizingFlow,
+    NormalizingFlowDetector,
+    NormalizingFlowFeatureModel,
     VAEDetector,
     VAEFeatureModel,
 )
