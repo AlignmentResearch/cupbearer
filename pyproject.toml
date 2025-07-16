@@ -28,6 +28,10 @@ dependencies = [
     "tqdm",
     "loguru",
     "matplotlib",
+    "transformers==4.48.3",
+    "transformer-lens==2.7.0",
+    "nflows@git+https://github.com/bayesiains/nflows.git",
+    "typeguard",
 ]
 
 requires-python = ">=3.10"

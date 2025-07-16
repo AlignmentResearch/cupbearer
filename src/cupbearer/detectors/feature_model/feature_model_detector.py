@@ -1,7 +1,7 @@
+import warnings
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any, Callable, Sequence
-import warnings
 
 import lightning as L
 import torch
@@ -20,9 +20,7 @@ class FeatureModel(ABC, torch.nn.Module):
         pass
 
     @abstractmethod
-    def forward(
-        self, inputs: Sequence[Any], features: dict[str, torch.Tensor], **kwargs
-    ) -> dict[str, torch.Tensor]:
+    def forward(self, inputs: Sequence[Any], features: dict[str, torch.Tensor], **kwargs) -> dict[str, torch.Tensor]:
         """Compute a loss for how well this model captures the features.
 
         Args:
@@ -84,12 +82,8 @@ class FeatureModelDetector(ActivationBasedDetector):
         self,
         feature_model: FeatureModel,
         feature_extractor: FeatureExtractor | None = None,
-        individual_processing_fn: Callable[[torch.Tensor, Any, str], torch.Tensor]
-        | None = None,
-        global_processing_fn: Callable[
-            [dict[str, torch.Tensor]], dict[str, torch.Tensor]
-        ]
-        | None = None,
+        individual_processing_fn: Callable[[torch.Tensor, Any, str], torch.Tensor] | None = None,
+        global_processing_fn: Callable[[dict[str, torch.Tensor]], dict[str, torch.Tensor]] | None = None,
         layer_aggregation: str = "mean",
         cache: FeatureCache | None = None,
     ):
@@ -111,10 +105,8 @@ class FeatureModelDetector(ActivationBasedDetector):
 
         # Model is not always neccessary, but its abscence should raise a warning
         if self.model is not None:
-            warnings.warn(
-                "`model` was not set, so standard detector training will not work."
-            )
-            
+            warnings.warn("`model` was not set, so standard detector training will not work.")
+
             self.model.eval()
 
             # Pytorch lightning moves the model to the CPU after it's done training.
@@ -166,3 +158,6 @@ class FeatureModelDetector(ActivationBasedDetector):
 
     def _set_trained_variables(self, variables):
         self.feature_model.load_state_dict(variables)
+
+    def num_parameters(self) -> int:
+        return sum(p.numel() for p in self.feature_model.parameters())

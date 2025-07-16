@@ -21,6 +21,32 @@ from cupbearer.tasks import Task
 from .extractors import FeatureExtractor
 
 
+def aggregate_scores(
+    layerwise_scores: dict[str, torch.Tensor],
+    layer_aggregation: str,
+) -> torch.Tensor:
+    scores = torch.stack(list(layerwise_scores.values()))
+    assert len(scores) > 0
+    # Type checker doesn't take into account that scores is non-empty,
+    # so thinks this might be a float.
+    if layer_aggregation == "mean":
+        return scores.mean(dim=0)
+    elif layer_aggregation == "max":
+        return torch.amax(scores, dim=0)
+    elif layer_aggregation.startswith("mean_with_top_k"):
+        try:
+            k, topk_coef = layer_aggregation.split("-")[1:]
+            k, topk_coef = int(k), float(topk_coef)
+        except ValueError:
+            raise ValueError(
+                f"Invalid layer aggregation format for topk. Expected format: mean_with_top_k-<k>-<topk_coef>, got {layer_aggregation}"
+            )
+        topk_scores = torch.topk(scores, k=k, dim=0).values
+        return topk_coef * topk_scores.mean(dim=0) + (1 - topk_coef) * scores.mean(dim=0)
+    else:
+        raise ValueError(f"Unknown layer aggregation: {layer_aggregation}")
+
+
 class AnomalyDetector(ABC):
     """Base class for model-based anomaly detectors.
 
@@ -45,9 +71,7 @@ class AnomalyDetector(ABC):
         self.set_model(model)
 
     @abstractmethod
-    def _compute_layerwise_scores(
-        self, inputs: Any, features: Any
-    ) -> dict[str, torch.Tensor]:
+    def _compute_layerwise_scores(self, inputs: Any, features: Any) -> dict[str, torch.Tensor]:
         """Compute anomaly scores for the given inputs for each layer.
 
         Each element of the returned dictionary must have shape (batch_size, ).
@@ -134,19 +158,8 @@ class AnomalyDetector(ABC):
         scores = self.compute_layerwise_scores(inputs)
         return self._aggregate_scores(scores)
 
-    def _aggregate_scores(
-        self, layerwise_scores: dict[str, torch.Tensor]
-    ) -> torch.Tensor:
-        scores = layerwise_scores.values()
-        assert len(scores) > 0
-        # Type checker doesn't take into account that scores is non-empty,
-        # so thinks this might be a float.
-        if self.layer_aggregation == "mean":
-            return sum(scores) / len(scores)  # type: ignore
-        elif self.layer_aggregation == "max":
-            return torch.amax(torch.stack(list(scores)), dim=0)
-        else:
-            raise ValueError(f"Unknown layer aggregation: {self.layer_aggregation}")
+    def _aggregate_scores(self, layerwise_scores: dict[str, torch.Tensor]) -> torch.Tensor:
+        return aggregate_scores(layerwise_scores, self.layer_aggregation)
 
     def _collate_fn(self, batch):
         batch = torch.utils.data.default_collate(batch)
@@ -178,16 +191,14 @@ class AnomalyDetector(ABC):
         """
         if task is None:
             if trusted_data is None and untrusted_data is None:
-                raise ValueError(
-                    "Either task or trusted_data or untrusted_data must be provided."
-                )
+                raise ValueError("Either task or trusted_data or untrusted_data must be provided.")
             if model is not None:
                 self.set_model(model)
         else:
             assert model is None, "model must be None when passing a task"
-            assert (
-                trusted_data is None and untrusted_data is None
-            ), "trusted_data and untrusted_data must be None when passing a task"
+            assert trusted_data is None and untrusted_data is None, (
+                "trusted_data and untrusted_data must be None when passing a task"
+            )
             trusted_data = task.trusted_data
             untrusted_data = task.untrusted_train_data
             self.set_model(task.model)
@@ -242,9 +253,7 @@ class AnomalyDetector(ABC):
                 self.set_model(model)
         else:
             assert model is None, "model must be None when passing a task"
-            assert (
-                dataset is None and test_loader is None
-            ), "dataset and test_loader must be None when passing a task"
+            assert dataset is None and test_loader is None, "dataset and test_loader must be None when passing a task"
             dataset = task.test_data
             self.set_model(task.model)
 
@@ -279,9 +288,7 @@ class AnomalyDetector(ABC):
                 shuffle=False,
             )
         else:
-            assert (
-                dataset is None
-            ), "Either dataset or dataloader should be provided, not both."
+            assert dataset is None, "Either dataset or dataloader should be provided, not both."
             assert isinstance(dataloader.dataset, MixedData), type(dataloader.dataset)
         return dataloader
 
@@ -309,7 +316,9 @@ class AnomalyDetector(ABC):
                 for layer, score in new_scores.items():
                     if isinstance(score, torch.Tensor):
                         score = score.cpu().numpy()
-                    assert score.shape == new_labels.shape
+                    assert score.shape == new_labels.shape, (
+                        f"Score shape: {score.shape}, labels shape: {new_labels.shape}"
+                    )
                     scores[layer].append(score)
                 labels.append(new_labels)
         scores = {layer: np.concatenate(scores[layer]) for layer in scores}
@@ -345,7 +354,7 @@ class AnomalyDetector(ABC):
             logger.info(f"AP ({layer}): {ap:.4f}")
             metrics[layer]["AUC_ROC"] = auc_roc
             metrics[layer]["AP"] = ap
-            
+
             # Save the scores for the positive and negative examples in metrics
             metrics[layer]["scores"] = {
                 "positive": scores[layer][labels == 1].tolist(),
@@ -397,12 +406,8 @@ class AnomalyDetector(ABC):
             assert isinstance(dataset, MixedData), type(dataset)
             for layer, layer_scores in scores.items():
                 # "false positives" etc. isn't quite right because there's no threshold
-                false_positives = np.argsort(
-                    np.where(labels == 0, layer_scores, -np.inf)
-                )[-10:]
-                false_negatives = np.argsort(
-                    np.where(labels == 1, layer_scores, np.inf)
-                )[:10]
+                false_positives = np.argsort(np.where(labels == 0, layer_scores, -np.inf))[-10:]
+                false_negatives = np.argsort(np.where(labels == 1, layer_scores, np.inf))[:10]
 
                 print("\nNormal but high anomaly score:\n")
                 for idx in false_positives:

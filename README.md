@@ -1,4 +1,13 @@
 # `cupbearer` 🍷
+
+## New changes
+
+- Added a new `nflows` based detector.
+- `aggregate_scores` function now part of module instead of a specific class.
+- Added `intermediate_dim_factor` and `dtype` to VAE.
+
+## Old readme
+
 `cupbearer` is a Python library for
 [mechanistic anomaly detection](https://www.alignmentforum.org/posts/vwt3wKXWaCvqZyF74/mechanistic-anomaly-detection-and-elk).
 Its main purpose is to make it easy to implement either a new mechanistic anomaly
