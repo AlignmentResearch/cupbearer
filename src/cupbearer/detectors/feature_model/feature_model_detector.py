@@ -105,6 +105,7 @@ class FeatureModelDetector(ActivationBasedDetector):
             lr=lr,
             weight_decay=weight_decay,
         )
+        self.original_device = next(self.feature_model.parameters()).device
 
         # Model is not always neccessary, but its abscence should raise a warning
         if self.model is not None:
