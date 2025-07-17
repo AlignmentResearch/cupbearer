@@ -3,12 +3,16 @@ from pathlib import Path
 from typing import Optional
 
 import torch
-import torchattacks
 from loguru import logger
 from matplotlib import pyplot as plt
 from torch.utils.data import DataLoader, Dataset, Subset
 
 from cupbearer import utils
+
+try:
+    import torchattacks
+except ImportError:
+    logger.warning("torchattacks not installed, adversarial examples will not be generated")
 
 
 class AdversarialExampleDataset(Dataset):
@@ -26,10 +30,7 @@ class AdversarialExampleDataset(Dataset):
         if num_examples is None:
             num_examples = len(advexes)
         if len(advexes) < num_examples:
-            raise ValueError(
-                f"Only {len(advexes)} adversarial examples exist, "
-                f"but {num_examples} were requested"
-            )
+            raise ValueError(f"Only {len(advexes)} adversarial examples exist, but {num_examples} were requested")
 
         return cls(advexes[:num_examples], labels[:num_examples])
 
@@ -69,19 +70,14 @@ def make_adversarial_examples(
         shuffle=False,
     )
 
-    atk = torchattacks.PGD(
-        model, eps=eps, alpha=2 / 255, steps=steps, random_start=True
-    )
+    atk = torchattacks.PGD(model, eps=eps, alpha=2 / 255, steps=steps, random_start=True)
     rob_acc, l2, elapsed_time = atk.save(dataloader, save_path, return_verbose=True)
 
     # N.B. rob_acc is in percent while success_threshold is not
     if rob_acc > 100 * success_threshold:
         # Make sure we delete the unsuccessful data so we don't load it later
         save_path.unlink()
-        raise RuntimeError(
-            "Attack failed, new accuracy is"
-            f" {rob_acc}% > {100 * success_threshold}%."
-        )
+        raise RuntimeError(f"Attack failed, new accuracy is {rob_acc}% > {100 * success_threshold}%.")
 
     # Plot a few adversarial examples in a grid and save the plot as a pdf
     adv_examples = torch.load(save_path)["adv_inputs"]
