@@ -293,10 +293,14 @@ class AnomalyDetector(ABC):
         return dataloader
 
     def compute_eval_scores(
-        self, test_loader: DataLoader, layerwise: bool = False
+        self, test_loader: DataLoader, layerwise: bool = False, device: torch.device | None = None
     ) -> tuple[dict[str, np.ndarray], np.ndarray]:
         scores = defaultdict(list)
         labels = []
+
+        if device is not None:
+            if hasattr(self, "feature_model"):
+                self.feature_model.to(device)
 
         # It's important we don't use torch.inference_mode() here, since we want
         # to be able to override this in certain detectors using torch.enable_grad().
@@ -304,6 +308,11 @@ class AnomalyDetector(ABC):
             for batch in test_loader:
                 samples, new_labels = batch
                 inputs = utils.inputs_from_batch(samples)
+                if device is not None:
+                    if isinstance(inputs, torch.Tensor):
+                        inputs = inputs.to(device)
+                    else:
+                        inputs = {k: v.to(device) for k, v in inputs.items()}
                 if layerwise:
                     new_scores = self.compute_layerwise_scores(inputs)
                     new_scores["all"] = self._aggregate_scores(new_scores)
