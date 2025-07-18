@@ -1,5 +1,6 @@
 import warnings
 from abc import ABC, abstractmethod
+from collections import defaultdict
 from pathlib import Path
 from typing import Any, Callable, Sequence
 
@@ -9,6 +10,26 @@ import torch
 from cupbearer import utils
 from cupbearer.detectors.activation_based import ActivationBasedDetector
 from cupbearer.detectors.extractors import FeatureCache, FeatureExtractor
+
+
+class TrainingLossCapturingCallback:
+    """Callback to capture training losses from PyTorch Lightning trainer."""
+
+    def __init__(self):
+        self.losses = defaultdict(list)
+
+    def on_train_epoch_end(self, trainer, pl_module):
+        """Capture losses at the end of each epoch."""
+        if hasattr(trainer, "logged_metrics"):
+            epoch_loss = trainer.logged_metrics.get("train/loss", None)
+            if epoch_loss is not None:
+                self.losses["loss"].append(float(epoch_loss))
+
+            # Capture layer-wise losses
+            for key, value in trainer.logged_metrics.items():
+                if key.startswith("train/layer_loss/"):
+                    layer_name = key.replace("train/layer_loss/", "")
+                    self.losses["layer_" + layer_name].append(float(value))
 
 
 class FeatureModel(ABC, torch.nn.Module):
@@ -138,18 +159,38 @@ class FeatureModelDetector(ActivationBasedDetector):
             raise ValueError("Abstraction detector requires trusted training data.")
         self._setup_training(lr, weight_decay)
 
+        # Create callback to capture losses
+        loss_callback = TrainingLossCapturingCallback()
+
         if save_path is not None:
             trainer_kwargs["default_root_dir"] = save_path
         else:
             trainer_kwargs["enable_checkpointing"] = False
             trainer_kwargs["logger"] = False
 
+        # Create a custom callback that captures losses
+        class LossCapturingCallback(L.Callback):
+            def __init__(self, loss_callback):
+                self.loss_callback = loss_callback
+
+            def on_train_epoch_end(self, trainer, pl_module):
+                self.loss_callback.on_train_epoch_end(trainer, pl_module)
+
+        # Add our callback
+        if "callbacks" not in trainer_kwargs:
+            trainer_kwargs["callbacks"] = []
+        trainer_kwargs["callbacks"].append(LossCapturingCallback(loss_callback))
+
         trainer = L.Trainer(max_epochs=max_epochs, **trainer_kwargs)
         trainer.fit(
             model=self.module,
             train_dataloaders=trusted_dataloader,
         )
+        # Store the captured losses
+        self._last_training_losses = loss_callback.losses
         self._teardown_training()
+
+        return self._last_training_losses
 
     def _teardown_training(self):
         self.module.to(self.original_device)
