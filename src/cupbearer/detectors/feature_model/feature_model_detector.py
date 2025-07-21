@@ -153,8 +153,13 @@ class FeatureModelDetector(ActivationBasedDetector):
         lr: float = 1e-3,
         max_epochs: int = 1,
         weight_decay: float = 0.0,
+        device: torch.device | str = "auto",
         **trainer_kwargs,
     ):
+        if device == "auto":
+            device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.to(device)
+
         if trusted_dataloader is None:
             raise ValueError("Abstraction detector requires trusted training data.")
         self._setup_training(lr, weight_decay)
@@ -181,7 +186,13 @@ class FeatureModelDetector(ActivationBasedDetector):
             trainer_kwargs["callbacks"] = []
         trainer_kwargs["callbacks"].append(LossCapturingCallback(loss_callback))
 
-        trainer = L.Trainer(max_epochs=max_epochs, **trainer_kwargs)
+        if isinstance(device, str):
+            accelerator = "gpu" if device == "cuda" else device
+        elif isinstance(device, torch.device):
+            accelerator = "gpu" if device.type == "cuda" else device.type
+        else:
+            raise ValueError(f"Invalid device: {device}")
+        trainer = L.Trainer(max_epochs=max_epochs, accelerator=accelerator, **trainer_kwargs)
         trainer.fit(
             model=self.module,
             train_dataloaders=trusted_dataloader,
@@ -207,3 +218,7 @@ class FeatureModelDetector(ActivationBasedDetector):
 
     def num_parameters(self) -> int:
         return sum(p.numel() for p in self.feature_model.parameters())
+
+    def to(self, device: torch.device | str):
+        super().to(device)
+        self.feature_model.to(device)

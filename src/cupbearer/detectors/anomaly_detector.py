@@ -96,6 +96,11 @@ class AnomalyDetector(ABC):
         `features` is None or the output of the feature extractor.
         """
 
+    @abstractmethod
+    def to(self, device: torch.device | str):
+        """Move the detector parameters to the given device."""
+        assert isinstance(device, torch.device) or isinstance(device, str)
+
     def _get_trained_variables(self):
         return {}
 
@@ -180,6 +185,7 @@ class AnomalyDetector(ABC):
         batch_size: int = 32,
         shuffle: bool = True,
         num_workers: int = 0,
+        device: torch.device | str = "auto",
         **kwargs,
     ):
         """Train the anomaly detector with the given datasets on the given model.
@@ -221,6 +227,7 @@ class AnomalyDetector(ABC):
         return self._train(
             trusted_dataloader=dataloaders[0],
             untrusted_dataloader=dataloaders[1],
+            device=device,
             **kwargs,
         )
 
@@ -299,8 +306,7 @@ class AnomalyDetector(ABC):
         labels = []
 
         if device is not None:
-            if hasattr(self, "feature_model"):
-                self.feature_model.to(device)
+            self.to(device)
 
         # It's important we don't use torch.inference_mode() here, since we want
         # to be able to override this in certain detectors using torch.enable_grad().
@@ -324,7 +330,7 @@ class AnomalyDetector(ABC):
                     new_scores = {"all": self.compute_scores(inputs)}
                 for layer, score in new_scores.items():
                     if isinstance(score, torch.Tensor):
-                        score = score.cpu().numpy()
+                        score = score.cpu().float().numpy()
                     assert score.shape == new_labels.shape, (
                         f"Score shape: {score.shape}, labels shape: {new_labels.shape}"
                     )

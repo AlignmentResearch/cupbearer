@@ -34,8 +34,12 @@ class StatisticalDetector(ActivationBasedDetector):
         *,
         pbar: bool = True,
         max_steps: int | None = None,
+        device: torch.device | str = "auto",
         **kwargs,
     ):
+        if device == "auto":
+            device = "cuda" if torch.cuda.is_available() else "cpu"
+
         all_dataloaders = {}
 
         if self.use_trusted:
@@ -56,12 +60,14 @@ class StatisticalDetector(ActivationBasedDetector):
                 self.init_variables(
                     sample_batch=next(iter(dataloader)),
                     case=case,
+                    device=device,
                 )
 
                 if pbar:
                     dataloader = tqdm(dataloader, total=max_steps or len(dataloader))
 
                 for i, (_, activations) in enumerate(dataloader):
+                    activations = {k: v.to(device) for k, v in activations.items()}
                     if max_steps and i >= max_steps:
                         break
                     self.batch_update(activations, case)
@@ -83,12 +89,14 @@ class ActivationCovarianceBasedDetector(StatisticalDetector):
         self,
         sample_batch,
         case: str,
+        device: torch.device | str | None = None,
     ):
         _, example_activations = sample_batch
 
         # v is an entire batch, v[0] are activations for a single input
         activation_sizes = {k: v[0].size() for k, v in example_activations.items()}
-        device = next(iter(example_activations.values())).device
+        if device is None:
+            device = next(iter(example_activations.values())).device
 
         if any(len(size) != 1 for size in activation_sizes.values()):
             logger.debug(
@@ -171,3 +179,8 @@ class ActivationCovarianceBasedDetector(StatisticalDetector):
 
     def num_parameters(self) -> int:
         return sum(v.numel() for v in self._means.values()) + sum(v.numel() for v in self._Cs.values())
+
+    def to(self, device: torch.device | str):
+        super().to(device)
+        self._means = {case: {k: v.to(device) for k, v in means.items()} for case, means in self._means.items()}
+        self._Cs = {case: {k: v.to(device) for k, v in Cs.items()} for case, Cs in self._Cs.items()}
