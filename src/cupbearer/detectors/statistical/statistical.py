@@ -34,8 +34,12 @@ class StatisticalDetector(ActivationBasedDetector):
         *,
         pbar: bool = True,
         max_steps: int | None = None,
+        device: torch.device | str = "auto",
         **kwargs,
     ):
+        if device == "auto":
+            device = "cuda" if torch.cuda.is_available() else "cpu"
+
         all_dataloaders = {}
 
         if self.use_trusted:
@@ -56,6 +60,7 @@ class StatisticalDetector(ActivationBasedDetector):
                 self.init_variables(
                     sample_batch=next(iter(dataloader)),
                     case=case,
+                    device=device,
                 )
 
                 if pbar:
@@ -83,12 +88,14 @@ class ActivationCovarianceBasedDetector(StatisticalDetector):
         self,
         sample_batch,
         case: str,
+        device: torch.device | str | None = None,
     ):
         _, example_activations = sample_batch
 
         # v is an entire batch, v[0] are activations for a single input
         activation_sizes = {k: v[0].size() for k, v in example_activations.items()}
-        device = next(iter(example_activations.values())).device
+        if device is None:
+            device = next(iter(example_activations.values())).device
 
         if any(len(size) != 1 for size in activation_sizes.values()):
             logger.debug(

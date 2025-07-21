@@ -185,6 +185,7 @@ class AnomalyDetector(ABC):
         batch_size: int = 32,
         shuffle: bool = True,
         num_workers: int = 0,
+        device: torch.device | str = "auto",
         **kwargs,
     ):
         """Train the anomaly detector with the given datasets on the given model.
@@ -226,6 +227,7 @@ class AnomalyDetector(ABC):
         return self._train(
             trusted_dataloader=dataloaders[0],
             untrusted_dataloader=dataloaders[1],
+            device=device,
             **kwargs,
         )
 
