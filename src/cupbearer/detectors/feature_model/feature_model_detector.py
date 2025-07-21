@@ -29,7 +29,7 @@ class TrainingLossCapturingCallback:
             for key, value in trainer.logged_metrics.items():
                 if key.startswith("train/layer_loss/"):
                     layer_name = key.replace("train/layer_loss/", "")
-                    self.losses["layer_" + layer_name].append(float(value))
+                    self.losses["layer_" + layer_name + "_loss"].append(float(value))
 
 
 class FeatureModel(ABC, torch.nn.Module):
