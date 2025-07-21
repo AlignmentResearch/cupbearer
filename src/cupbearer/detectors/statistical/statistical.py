@@ -67,6 +67,7 @@ class StatisticalDetector(ActivationBasedDetector):
                     dataloader = tqdm(dataloader, total=max_steps or len(dataloader))
 
                 for i, (_, activations) in enumerate(dataloader):
+                    activations = {k: v.to(device) for k, v in activations.items()}
                     if max_steps and i >= max_steps:
                         break
                     self.batch_update(activations, case)

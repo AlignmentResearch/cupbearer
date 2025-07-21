@@ -186,7 +186,13 @@ class FeatureModelDetector(ActivationBasedDetector):
             trainer_kwargs["callbacks"] = []
         trainer_kwargs["callbacks"].append(LossCapturingCallback(loss_callback))
 
-        trainer = L.Trainer(max_epochs=max_epochs, devices=device, **trainer_kwargs)
+        if isinstance(device, str):
+            accelerator = "gpu" if device == "cuda" else device
+        elif isinstance(device, torch.device):
+            accelerator = "gpu" if device.type == "cuda" else device.type
+        else:
+            raise ValueError(f"Invalid device: {device}")
+        trainer = L.Trainer(max_epochs=max_epochs, accelerator=accelerator, **trainer_kwargs)
         trainer.fit(
             model=self.module,
             train_dataloaders=trusted_dataloader,

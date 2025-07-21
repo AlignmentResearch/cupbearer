@@ -330,7 +330,7 @@ class AnomalyDetector(ABC):
                     new_scores = {"all": self.compute_scores(inputs)}
                 for layer, score in new_scores.items():
                     if isinstance(score, torch.Tensor):
-                        score = score.cpu().numpy()
+                        score = score.cpu().float().numpy()
                     assert score.shape == new_labels.shape, (
                         f"Score shape: {score.shape}, labels shape: {new_labels.shape}"
                     )
