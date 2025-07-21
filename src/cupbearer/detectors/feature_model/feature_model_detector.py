@@ -207,3 +207,7 @@ class FeatureModelDetector(ActivationBasedDetector):
 
     def num_parameters(self) -> int:
         return sum(p.numel() for p in self.feature_model.parameters())
+
+    def to(self, device: torch.device | str):
+        super().to(device)
+        self.feature_model.to(device)

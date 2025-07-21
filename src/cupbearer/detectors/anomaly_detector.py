@@ -96,6 +96,11 @@ class AnomalyDetector(ABC):
         `features` is None or the output of the feature extractor.
         """
 
+    @abstractmethod
+    def to(self, device: torch.device | str):
+        """Move the detector parameters to the given device."""
+        assert isinstance(device, torch.device) or isinstance(device, str)
+
     def _get_trained_variables(self):
         return {}
 
@@ -299,8 +304,7 @@ class AnomalyDetector(ABC):
         labels = []
 
         if device is not None:
-            if hasattr(self, "feature_model"):
-                self.feature_model.to(device)
+            self.to(device)
 
         # It's important we don't use torch.inference_mode() here, since we want
         # to be able to override this in certain detectors using torch.enable_grad().

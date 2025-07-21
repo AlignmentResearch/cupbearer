@@ -171,3 +171,8 @@ class ActivationCovarianceBasedDetector(StatisticalDetector):
 
     def num_parameters(self) -> int:
         return sum(v.numel() for v in self._means.values()) + sum(v.numel() for v in self._Cs.values())
+
+    def to(self, device: torch.device | str):
+        super().to(device)
+        self._means = {case: {k: v.to(device) for k, v in means.items()} for case, means in self._means.items()}
+        self._Cs = {case: {k: v.to(device) for k, v in Cs.items()} for case, Cs in self._Cs.items()}
