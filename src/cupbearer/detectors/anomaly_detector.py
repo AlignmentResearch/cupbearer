@@ -300,8 +300,19 @@ class AnomalyDetector(ABC):
         return dataloader
 
     def compute_eval_scores(
-        self, test_loader: DataLoader, layerwise: bool = False, device: torch.device | None = None
+        self,
+        test_loader: DataLoader,
+        layerwise: bool = False,
+        device: torch.device | None = None,
+        sequence_aggregation: str = "mean",
     ) -> tuple[dict[str, np.ndarray], np.ndarray]:
+        """Compute anomaly scores for the given test loader.
+
+        If given 3D inputs (batch_size, seq_len, d_model), takes a mean of scores over the sequence dimension of non-zero activations
+        (zero-activations are assumed to be padding).
+
+        If given 2D inputs (batch_size, d_model), computes scores for each example.
+        """
         scores = defaultdict(list)
         labels = []
 
@@ -328,7 +339,22 @@ class AnomalyDetector(ABC):
                     # make sure to analyze only the overall scores unless requested
                     # otherwise.
                     new_scores = {"all": self.compute_scores(inputs)}
+                first_input = next(iter(inputs.values()))
+                if first_input.ndim == 3:
+                    mask = (first_input != 0).any(dim=-1)  # (batch_size, seq_len)
+                    valid_counts = mask.sum(dim=1, keepdim=True).float()
+                    valid_counts = torch.clamp(valid_counts, min=1.0).squeeze(1)
                 for layer, score in new_scores.items():
+                    if first_input.ndim == 3:
+                        score = score * mask.float()
+                        if sequence_aggregation == "mean":
+                            score = score.sum(dim=1) / valid_counts
+                        elif sequence_aggregation == "max":
+                            score = torch.amax(score, dim=1)
+                        elif sequence_aggregation == "sum":
+                            score = score.sum(dim=1)
+                        else:
+                            raise ValueError(f"Unknown sequence aggregation: {sequence_aggregation}")
                     if isinstance(score, torch.Tensor):
                         score = score.cpu().float().numpy()
                     assert score.shape == new_labels.shape, (
