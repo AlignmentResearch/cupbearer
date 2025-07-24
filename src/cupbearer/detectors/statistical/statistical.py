@@ -137,17 +137,16 @@ class ActivationCovarianceBasedDetector(StatisticalDetector):
         `name` is passed in to access the mean/covariance and any custom derived
         quantities computed in post_covariance_training.
 
-        `activation` will always have shape (batch, dim). The `batch` dimension might
-        not just be the actual batch dimension, but could also contain multiple entries
-        from a single sample, in the case of multi-dimensional activations that we
-        treat as independent along all but the last dimension.
+        `activation` can be a batch (batch, dim) or a batch with sequence (batch, seq_len, dim).
+        It returns a score for each sample in the batch and the sequence dimension.
 
-        Should return a tensor of shape (batch,) with the anomaly scores.
+        Should return a tensor of shape (batch,) or (batch, seq_len) with the anomaly scores.
         """
         pass
 
     def _compute_layerwise_scores(self, inputs, features):
-        batch_size = next(iter(features.values())).shape[0]
+        batch_shape = next(iter(features.values())).shape
+        batch_size = batch_shape[0]
         features = {k: rearrange(v, "batch ... dim -> (batch ...) dim") for k, v in features.items()}
         scores = {k: self._individual_layerwise_score(k, v) for k, v in features.items()}
         scores = {
@@ -155,9 +154,11 @@ class ActivationCovarianceBasedDetector(StatisticalDetector):
                 v,
                 "(batch independent_dims) -> batch independent_dims",
                 batch=batch_size,
-            ).mean(-1)
+            )
             for k, v in scores.items()
         }
+        if len(batch_shape) == 2:
+            scores = {k: v.squeeze(1) for k, v in scores.items()}
         return scores
 
     def _finalize_training(self, **kwargs):

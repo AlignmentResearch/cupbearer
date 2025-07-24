@@ -127,10 +127,10 @@ class VAE(nn.Module):
         """
 
         recons_loss = nn.functional.mse_loss(reconstruction, input, reduction="none")
-        # Reduce over all but first dimension
-        recons_loss = recons_loss.view(recons_loss.shape[0], -1).mean(dim=1)
+        # Reduce over the last dimension
+        recons_loss = recons_loss.mean(dim=-1)
 
-        kld_loss = -0.5 * torch.sum(1 + log_var - mu**2 - log_var.exp(), dim=tuple(range(1, mu.dim())))
+        kld_loss = -0.5 * torch.sum(1 + log_var - mu**2 - log_var.exp(), dim=-1)
 
         if reduce:
             recons_loss = recons_loss.mean()

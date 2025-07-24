@@ -18,8 +18,8 @@ class TrainingLossCapturingCallback:
     def __init__(self):
         self.losses = defaultdict(list)
 
-    def on_train_epoch_end(self, trainer, pl_module):
-        """Capture losses at the end of each epoch."""
+    def log_loss(self, trainer):
+        """Capture losses at the end of each epoch or step (batch)."""
         if hasattr(trainer, "logged_metrics"):
             epoch_loss = trainer.logged_metrics.get("train/loss", None)
             if epoch_loss is not None:
@@ -154,6 +154,7 @@ class FeatureModelDetector(ActivationBasedDetector):
         max_epochs: int = 1,
         weight_decay: float = 0.0,
         device: torch.device | str = "auto",
+        log_epoch_wise_loss: bool = True,
         **trainer_kwargs,
     ):
         if device == "auto":
@@ -175,11 +176,17 @@ class FeatureModelDetector(ActivationBasedDetector):
 
         # Create a custom callback that captures losses
         class LossCapturingCallback(L.Callback):
-            def __init__(self, loss_callback):
+            def __init__(self, loss_callback, log_epoch_wise_loss: bool = True):
                 self.loss_callback = loss_callback
+                self.log_epoch_wise_loss = log_epoch_wise_loss
 
             def on_train_epoch_end(self, trainer, pl_module):
-                self.loss_callback.on_train_epoch_end(trainer, pl_module)
+                if self.log_epoch_wise_loss:
+                    self.loss_callback.log_loss(trainer)
+
+            def on_train_batch_end(self, trainer, pl_module, outputs, batch, batch_idx):
+                if not self.log_epoch_wise_loss:
+                    self.loss_callback.log_loss(trainer)
 
         # Add our callback
         if "callbacks" not in trainer_kwargs:
