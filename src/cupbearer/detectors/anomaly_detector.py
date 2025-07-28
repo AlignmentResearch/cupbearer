@@ -324,6 +324,7 @@ class AnomalyDetector(ABC):
         with torch.no_grad():
             for batch in test_loader:
                 samples, new_labels = batch
+                new_labels = np.array(new_labels)
                 inputs = utils.inputs_from_batch(samples)
                 if device is not None:
                     if isinstance(inputs, torch.Tensor):
@@ -353,6 +354,9 @@ class AnomalyDetector(ABC):
                             score = torch.amax(score, dim=1)
                         elif sequence_aggregation == "sum":
                             score = score.sum(dim=1)
+                        elif sequence_aggregation == "none":
+                            new_labels = new_labels[:, None].repeat(score.shape[1], axis=1)[mask.cpu().numpy()]
+                            score = score[mask]
                         else:
                             raise ValueError(f"Unknown sequence aggregation: {sequence_aggregation}")
                     if isinstance(score, torch.Tensor):

@@ -191,7 +191,7 @@ class FeatureModelDetector(ActivationBasedDetector):
         # Add our callback
         if "callbacks" not in trainer_kwargs:
             trainer_kwargs["callbacks"] = []
-        trainer_kwargs["callbacks"].append(LossCapturingCallback(loss_callback))
+        trainer_kwargs["callbacks"].append(LossCapturingCallback(loss_callback, log_epoch_wise_loss))
 
         if isinstance(device, str):
             accelerator = "gpu" if device == "cuda" else device
