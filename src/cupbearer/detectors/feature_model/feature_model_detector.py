@@ -68,12 +68,14 @@ class FeatureModelModule(L.LightningModule):
         feature_model: FeatureModel,
         lr: float,
         weight_decay: float = 0.0,
+        max_steps: int = 10,
     ):
         super().__init__()
 
         self.feature_model = feature_model
         self.lr = lr
         self.weight_decay = weight_decay
+        self.max_steps = max_steps
 
     def _shared_step(self, batch):
         samples, features = batch
@@ -95,7 +97,14 @@ class FeatureModelModule(L.LightningModule):
 
     def configure_optimizers(self):
         # Note we only optimize over the abstraction parameters, the model is frozen
-        return torch.optim.Adam(self.feature_model.parameters(), lr=self.lr, weight_decay=self.weight_decay)
+        optimizer = torch.optim.Adam(self.feature_model.parameters(), lr=self.lr, weight_decay=self.weight_decay)
+        lr_scheduler = torch.optim.lr_scheduler.LinearLR(
+            optimizer=optimizer,
+            start_factor=1.0,
+            end_factor=0.01,
+            total_iters=self.max_steps,
+        )
+        return [optimizer], [lr_scheduler]
 
 
 class FeatureModelDetector(ActivationBasedDetector):
@@ -120,11 +129,12 @@ class FeatureModelDetector(ActivationBasedDetector):
             cache=cache,
         )
 
-    def _setup_training(self, lr: float, weight_decay: float = 0.0):
+    def _setup_training(self, lr: float, weight_decay: float = 0.0, max_steps: int = 10):
         self.module = FeatureModelModule(
             self.feature_model,
             lr=lr,
             weight_decay=weight_decay,
+            max_steps=max_steps,
         )
         self.original_device = next(self.feature_model.parameters()).device
 
@@ -152,6 +162,7 @@ class FeatureModelDetector(ActivationBasedDetector):
         *,
         lr: float = 1e-3,
         max_epochs: int = 1,
+        max_steps: int = 10,
         weight_decay: float = 0.0,
         device: torch.device | str = "auto",
         log_epoch_wise_loss: bool = True,
@@ -163,7 +174,7 @@ class FeatureModelDetector(ActivationBasedDetector):
 
         if trusted_dataloader is None:
             raise ValueError("Abstraction detector requires trusted training data.")
-        self._setup_training(lr, weight_decay)
+        self._setup_training(lr, weight_decay, max_steps)
 
         # Create callback to capture losses
         loss_callback = TrainingLossCapturingCallback()
@@ -199,7 +210,7 @@ class FeatureModelDetector(ActivationBasedDetector):
             accelerator = "gpu" if device.type == "cuda" else device.type
         else:
             raise ValueError(f"Invalid device: {device}")
-        trainer = L.Trainer(max_epochs=max_epochs, accelerator=accelerator, **trainer_kwargs)
+        trainer = L.Trainer(max_steps=max_steps, accelerator=accelerator, **trainer_kwargs)
         trainer.fit(
             model=self.module,
             train_dataloaders=trusted_dataloader,
@@ -229,3 +240,5 @@ class FeatureModelDetector(ActivationBasedDetector):
     def to(self, device: torch.device | str):
         super().to(device)
         self.feature_model.to(device)
+        if self.feature_extractor is not None and hasattr(self.feature_extractor, "to"):
+            self.feature_extractor.to(device)

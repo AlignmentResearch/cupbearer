@@ -322,7 +322,7 @@ class AnomalyDetector(ABC):
         # It's important we don't use torch.inference_mode() here, since we want
         # to be able to override this in certain detectors using torch.enable_grad().
         with torch.no_grad():
-            for batch in test_loader:
+            for batch in tqdm(test_loader, desc="Computing scores"):
                 samples, new_labels = batch
                 new_labels = np.array(new_labels)
                 inputs = utils.inputs_from_batch(samples)
