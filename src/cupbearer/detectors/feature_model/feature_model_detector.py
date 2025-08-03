@@ -69,10 +69,12 @@ class FeatureModelModule(L.LightningModule):
         lr: float,
         weight_decay: float = 0.0,
         max_steps: int = 10,
+        extra_trainable_parameters: Sequence[torch.nn.Parameter] | None = None,
     ):
         super().__init__()
 
         self.feature_model = feature_model
+        self.extra_trainable_parameters = extra_trainable_parameters
         self.lr = lr
         self.weight_decay = weight_decay
         self.max_steps = max_steps
@@ -97,7 +99,13 @@ class FeatureModelModule(L.LightningModule):
 
     def configure_optimizers(self):
         # Note we only optimize over the abstraction parameters, the model is frozen
-        optimizer = torch.optim.Adam(self.feature_model.parameters(), lr=self.lr, weight_decay=self.weight_decay)
+        optimizer = torch.optim.Adam(
+            self.feature_model.parameters(),
+            lr=self.lr,
+            weight_decay=self.weight_decay,
+        )
+        if self.extra_trainable_parameters is not None:
+            optimizer.add_param_group({"params": self.extra_trainable_parameters})
         lr_scheduler = torch.optim.lr_scheduler.LinearLR(
             optimizer=optimizer,
             start_factor=1.0,
@@ -135,6 +143,9 @@ class FeatureModelDetector(ActivationBasedDetector):
             lr=lr,
             weight_decay=weight_decay,
             max_steps=max_steps,
+            extra_trainable_parameters=None
+            if isinstance(self.feature_extractor, FeatureExtractor)
+            else self.feature_extractor.parameters(),
         )
         self.original_device = next(self.feature_model.parameters()).device
 
