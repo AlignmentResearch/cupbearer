@@ -233,8 +233,8 @@ class FeatureModelDetector(ActivationBasedDetector):
         return self._last_training_losses
 
     def _teardown_training(self):
-        self.module.to(self.original_device)
-        # del self.module
+        # self.module.to(self.original_device)
+        del self.module
 
     def _compute_layerwise_scores(self, inputs, features):
         return self.feature_model(inputs, features)
