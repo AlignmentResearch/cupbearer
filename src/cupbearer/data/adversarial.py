@@ -12,7 +12,7 @@ from cupbearer import utils
 try:
     import torchattacks
 except ImportError:
-    logger.warning("torchattacks not installed, adversarial examples will not be generated")
+    pass
 
 
 class AdversarialExampleDataset(Dataset):
